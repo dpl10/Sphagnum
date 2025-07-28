@@ -178,7 +178,6 @@ else:
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
-from SoftClip import SoftClipLayer
 from IterativeNormalization import IterativeNormalization
 eprintWrap(f"TensorFlow {tf.version.VERSION}\n")
 
