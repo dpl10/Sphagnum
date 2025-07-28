@@ -64,6 +64,7 @@ settings['jcrop'] = False
 settings['kappa'] = 1.0
 settings['laTau'] = 0.0
 settings['learningRate'] = 0.005
+settings['leniency'] = 256
 settings['loss'] = 'ce'
 settings['model'] = ''
 settings['numberMap'] = ''
@@ -93,7 +94,6 @@ settings['contrastRange'] = [0.6, 1.4]
 settings['ema_momentum'] = 0.99 ### AdamW + SGD
 settings['GaussianSigma'] = (0.1, 2.0)
 settings['hue'] = 0.1
-settings['leniency'] = 256
 settings['perBatchRemix'] = False
 settings['randomMax'] = 2**32 ### 64 is unsafe (53 is max safe)
 settings['randomMin'] = 0
@@ -110,7 +110,7 @@ dataValidateError = 'Input validation data (required): -v file.tfr,file.tfr,... 
 modelError = 'Input model file (required): -m file.keras | --model=file.keras'
 outputDirectoryError = 'Model output directory (required): -o directory | --output=directory'
 try:
-	arguments, values = getopt.getopt(sys.argv[1:], 'a:B:b:C:cd:e:f:G:g:hi:jk:l:m:n:o:p:Qqr:s:T:t:u:v:w:xy:', ['array=', 'beta=', 'batch=', 'ccm=', 'cpu', 'decay=', 'epochs=', 'function=', 'gamma=', 'gpu=', 'help', 'input=', 'jcrop', 'kappa=', 'learning=', 'model=', 'numberMap=', 'output=', 'processors=', 'quantity', 'remix', 'random=', 'smooth=', 'Tau=', 'train=', 'tau=', 'validate=', 'weight=', 'ycount='])
+	arguments, values = getopt.getopt(sys.argv[1:], 'a:B:b:C:cd:e:f:G:g:hi:jk:L:l:m:n:o:p:Qqr:s:T:t:u:v:w:xy:', ['array=', 'beta=', 'batch=', 'ccm=', 'cpu', 'decay=', 'epochs=', 'function=', 'gamma=', 'gpu=', 'help', 'input=', 'jcrop', 'kappa=', 'leniency=', 'learning=', 'model=', 'numberMap=', 'output=', 'processors=', 'quantity', 'remix', 'random=', 'smooth=', 'Tau=', 'train=', 'tau=', 'validate=', 'weight=', 'ycount='])
 except getopt.error as err:
 	eprintWrap(str(err))
 	sys.exit(2)
@@ -154,6 +154,7 @@ for argument, value in arguments:
 		eprintWrap(f"Input image size (optional; default = {settings['inputSize']}): -i int | --input=int")
 		eprintWrap(f"Use multicrop dataset (optional; default = {settings['jcrop']}): -j | --jcrop")
 		eprintWrap(f"Remix Kappa (optional; default = {settings['kappa']}; arXiv:2007.03943): -k float | --kappa=float")
+		eprintWrap(f"Early stopping leniency (optional; default = {settings['leniency']}): -L int | --leniency=int")
 		eprintWrap(f"Learning rate (optional; default = {settings['learningRate']}): -l float | --learning=float")
 		eprintWrap(modelError)
 		eprintWrap('File to remap ID numbers for better one-hot encoding (optional; header assumed: .tfr ID, new ID): -n file.tsv | --numberMap=file.tsv')
@@ -177,6 +178,8 @@ for argument, value in arguments:
 		settings['jcrop'] = True
 	elif argument in ('-k', '--kappa') and float(value) > 0.0 and float(value) < 1.0:
 		settings['kappa'] = float(value)
+	elif argument in ('-L', '--leniency') and int(value) > 0:
+		settings['leniency'] = int(value)
 	elif argument in ('-l', '--learning') and float(value) > 0.0 and float(value) < 1.0:
 		settings['learningRate'] = float(value)
 	elif argument in ('-m', '--model'):
@@ -271,11 +274,14 @@ else:
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import tensorflow.keras.backend as K
-# from Bias import BiasLayer
+from Bias import BiasLayer
 from IterativeNormalization import IterativeNormalization
-# from LayerScale import LayerScale
-# from PatchEncoder import PatchEncoder
-# from PositionalEmbeddings import PositionalEmbeddings
+from LayerScale import LayerScale
+from LocalitySelfAttention import LocalitySelfAttention
+from PatchEncoder import PatchEncoder
+from PositionalEmbeddings import PositionalEmbeddings
+from ShiftedPatchEncoder import ShiftedPatchEncoder
+from SoftClip import SoftClipLayer
 availableGPUs = len(tf.config.experimental.list_physical_devices('GPU'))
 if settings['cpu'] == False and availableGPUs == 0:
 	eprintWrap('No GPUs are available to TensorFlow. Rerun the script with -c for CPU processing only.')
@@ -959,8 +965,8 @@ def scale(x):
 	return 1.0/(2.0**(x-1))
 
 ### model
-# model = tf.keras.models.load_model(settings['model'], compile = False, custom_objects = {'BiasLayer': BiasLayer, 'IterativeNormalization': IterativeNormalization, 'LayerScale': LayerScale, 'PatchEncoder': PatchEncoder, 'PositionalEmbeddings': PositionalEmbeddings})
-model = tf.keras.models.load_model(settings['model'], compile = False, custom_objects = {'IterativeNormalization': IterativeNormalization})
+model = tf.keras.models.load_model(settings['model'], compile = False, custom_objects = {'BiasLayer': BiasLayer, 'IterativeNormalization': IterativeNormalization, 'LayerScale': LayerScale, 'LocalitySelfAttention': LocalitySelfAttention, 'PatchEncoder': PatchEncoder, 'PositionalEmbeddings': PositionalEmbeddings, 'ShiftedPatchEncoder': ShiftedPatchEncoder, 'SoftClipLayer': SoftClipLayer})
+# model = tf.keras.models.load_model(settings['model'], compile = False, custom_objects = {'IterativeNormalization': IterativeNormalization})
 
 if len(settings['smoothModel']):
 	trainable = False

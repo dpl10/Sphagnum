@@ -264,7 +264,7 @@ def decodeTFR(record):
 			'image': tf.io.FixedLenFeature([], tf.string)
 		}
 		record = tf.io.parse_single_example(record, feature)
-		image = tf.cast(tf.io.decode_jpeg(
+		image = tf.cast(tf.io.decode_png(
 			channels = settings['bands'],
 			contents = record['image']
 		), tf.float32)

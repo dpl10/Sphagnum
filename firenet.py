@@ -52,10 +52,13 @@ settings['outputArray'] = None
 settings['outputPolish'] = 32
 settings['randomSeed'] = 123456789
 settings['sigmoidLossInit'] = False
+settings['softClip'] = False
 settings['squeezeExciteChannels'] = False
 settings['squeezeExciteSpatial'] = False
+settings['transferLayer'] = False
 settings['variances'] = []
 settings['zcaConv'] = False
+settings['zcaIterations'] = 3
 settings['zcaOutput'] = False
 
 
@@ -76,7 +79,7 @@ settings['weightDecay'] = 1e-4
 arrayError = 'Number of elements in the output array (required): -a int | --array=int'
 outFileError = 'Output file (required): -o file.keras | --output=file.keras'
 try:
-	arguments, values = getopt.getopt(sys.argv[1:], 'a:b:cdef:g:hi:lm:no:p:r:sv:x:z:', ['array=', 'bands=', 'channel', 'depthwise', 'extra', 'function=', 'generalizer=', 'help', 'input=', 'loss', 'mean=', 'none', 'output=', 'polish=' 'random=', 'spatial', 'variance=', 'xfilters', 'zca='])
+	arguments, values = getopt.getopt(sys.argv[1:], 'a:b:Ccdef:g:hi:lm:no:p:r:stv:x:Z:z:', ['array=', 'bands=', 'clip', 'channel', 'depthwise', 'extra', 'function=', 'generalizer=', 'help', 'input=', 'loss', 'mean=', 'none', 'output=', 'polish=' 'random=', 'spatial', 'transfer', 'variance=', 'xfilters', 'ZCA=', 'zca='])
 except getopt.error as err:
 	eprintWrap(str(err))
 	sys.exit(2)
@@ -85,6 +88,8 @@ for argument, value in arguments:
 		settings['outputArray'] = int(value)
 	elif argument in ('-b', '--bands') and int(value) > 0:
 		settings['bands'] = int(value)
+	elif argument in ('-C', '--clip'):
+		settings['softClip'] = True
 	elif argument in ('-c', '--channel'):
 		settings['squeezeExciteChannels'] = True
 	elif argument in ('-d', '--depthwise'):
@@ -101,6 +106,7 @@ for argument, value in arguments:
 		eprintWrap('A Python3 script to create a TensorFlow 2.13.0 reduced FireNet (DOI:10.1007/S11063-021-10555-1) model.')
 		eprintWrap(arrayError)
 		eprintWrap(f"Input image bands (optional; default = {settings['bands']}): -b int | --bands=int")
+		eprintWrap(f"Preprocess input with tanh and a learnable rescaling (optional; default = {settings['softClip']}): -C | --clip")
 		eprintWrap(f"Insert squeeze and excite modules (i.e. channel attention; arXiv:1709.01507; optional; default = {settings['squeezeExciteChannels']}): -c | --channel")
 		eprintWrap(f"Modify (arXiv:1907.02157) Fire Module (arXiv:1602.07360) 3x3 convolution to use depth-wise convolution (optional; default = {settings['depthwise']}): -d | --depthwise")
 		eprintWrap(f"Add an extra terminal squeezeFire (bottleneck) to the model (optional; default = {settings['extraBottleneck']}): -e | --extra")
@@ -114,8 +120,10 @@ for argument, value in arguments:
 		eprintWrap(f"Number of channels used for output polishing (optional; default = {settings['outputPolish']}): -p int | --polish=int")
 		eprintWrap(f"Random seed (optional; default = {settings['randomSeed']}): -r int | --random=int")
 		eprintWrap(f"Insert squeeze and excite modules (i.e. spatial attention; arXiv:1803.02579; optional; default = {settings['squeezeExciteSpatial']}): -s | --spatial")
+		eprintWrap(f"Insert a layer norm after the output Global Average Pooling (GAP) layer for easier transfer learning (optional; default = {settings['transferLayer']}): -t | --transfer")
 		eprintWrap('Band variance for image normalization (optional): -v float,float,... | --variance float,float,...')
 		eprintWrap(f"Number of expansion filters per block (optional; default = {','.join([str(x) for x in settings['filters']])}): -x int,int,int,int | --xfilters=int,int,int,int")
+		eprintWrap(f"Number of ZCA iterative batch norm layer iterations (optional; default = {settings['zcaIterations']}): -Z int | --ZCA=int")
 		eprintWrap(f"Insert a ZCA iterative batch norm layer after the input convolution ('conv') and/or before the output classifier ('output') (arXiv:1904.03441; optional; default = {settings['zcaOutput']}): -z {'|'.join(ZCA)},... | --zca={'|'.join(ZCA)},...")
 		eprint('')
 		sys.exit(0)
@@ -135,10 +143,14 @@ for argument, value in arguments:
 		settings['randomSeed'] = int(value)
 	elif argument in ('-s', '--spatial'):
 		settings['squeezeExciteSpatial'] = True
+	elif argument in ('-t', '--transfer'):
+		settings['transferLayer'] = True
 	elif argument in ('-v', '--variance') and re.search(VECTORS, value):
 		settings['variances'] = [float(x) for x in value.split(',')]
 	elif argument in ('-x', '--xfilters') and re.search(FILTERS, value):
 		settings['filters'] = [int(x) for x in value.split(',')]
+	elif argument in ('-Z', '--ZCA') and int(value) > 0:
+		settings['zcaIterations'] = int(value)
 	elif argument in ('-z', '--zca'):
 		for location in value.split(','):
 			if location == 'conv':
@@ -166,6 +178,7 @@ else:
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
+from SoftClip import SoftClipLayer
 from IterativeNormalization import IterativeNormalization
 eprintWrap(f"TensorFlow {tf.version.VERSION}\n")
 
@@ -313,11 +326,14 @@ def firenet():
 			variance = settings['variances']
 		)(firenet)
 	elif settings['inputAdjustment']:
-		firenet = tf.keras.layers.Rescaling(
-			name = 'rescale',
-			offset = -1,
-			scale = 1.0/127.5 
-		)(firenet)
+		if settings['softClip']:
+			firenet = SoftClipLayer(name = 'softClip')(firenet)
+		else:
+			firenet = tf.keras.layers.Rescaling(
+				name = 'rescale',
+				offset = -1,
+				scale = 1.0/127.5 
+			)(firenet)
 	firenet = conv2D(
 		x = firenet,
 		activation = settings['activation'],
@@ -361,6 +377,11 @@ def firenet():
 		flatten = True,
 		name = 'output'
 	)
+	if settings['transferLayer']:
+		firenet = normalize(
+			x = firenet, 
+			name = 'output'
+		)
 	if settings['outputPolish'] > 0:
 		firenet = dense(
 			x = firenet, 
@@ -393,6 +414,22 @@ def gap(x, flatten, name):
 		data_format = settings['dformat'], 
 		keepdims = not flatten,
 		name = f"{name}_gap", 
+	)(x)
+
+### LAYER NORMALIZATION
+def normalize(x, name):
+	return tf.keras.layers.LayerNormalization(
+		axis = -1,
+		beta_constraint = None,
+		beta_initializer = 'zeros',
+		beta_regularizer = None,
+		center = True,
+		epsilon = settings['epsilon'],
+		gamma_constraint = None,
+		gamma_initializer = 'ones',
+		gamma_regularizer = None,
+		name = f"{name}_layerNormalization",
+		scale = True
 	)(x)
 
 ### SQUEEZE AND EXCITE
@@ -458,7 +495,7 @@ def zca(x, name, place):
 	return IterativeNormalization(
 		data_format = settings['dformat'],
 		epsilon = settings['epsilon'],
-		iterations = 3,
+		iterations = settings['zcaIterations'],
 		membersPerGroup = group if place == 'input' else group//4,
 		momentum = 0.9,
 		name = f"{name}_zcaBN",
