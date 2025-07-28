@@ -274,14 +274,7 @@ else:
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from Bias import BiasLayer
 from IterativeNormalization import IterativeNormalization
-from LayerScale import LayerScale
-from LocalitySelfAttention import LocalitySelfAttention
-from PatchEncoder import PatchEncoder
-from PositionalEmbeddings import PositionalEmbeddings
-from ShiftedPatchEncoder import ShiftedPatchEncoder
-from SoftClip import SoftClipLayer
 availableGPUs = len(tf.config.experimental.list_physical_devices('GPU'))
 if settings['cpu'] == False and availableGPUs == 0:
 	eprintWrap('No GPUs are available to TensorFlow. Rerun the script with -c for CPU processing only.')
@@ -965,8 +958,8 @@ def scale(x):
 	return 1.0/(2.0**(x-1))
 
 ### model
-model = tf.keras.models.load_model(settings['model'], compile = False, custom_objects = {'BiasLayer': BiasLayer, 'IterativeNormalization': IterativeNormalization, 'LayerScale': LayerScale, 'LocalitySelfAttention': LocalitySelfAttention, 'PatchEncoder': PatchEncoder, 'PositionalEmbeddings': PositionalEmbeddings, 'ShiftedPatchEncoder': ShiftedPatchEncoder, 'SoftClipLayer': SoftClipLayer})
 # model = tf.keras.models.load_model(settings['model'], compile = False, custom_objects = {'IterativeNormalization': IterativeNormalization})
+model = tf.keras.models.load_model(settings['model'], compile = False, custom_objects = {'IterativeNormalization': IterativeNormalization})
 
 if len(settings['smoothModel']):
 	trainable = False
