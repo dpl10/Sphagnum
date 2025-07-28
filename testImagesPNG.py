@@ -156,14 +156,7 @@ else:
 	os.environ['CUDA_VISIBLE_DEVICES'] = settings['gpu']
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
-from Bias import BiasLayer
 from IterativeNormalization import IterativeNormalization
-from LayerScale import LayerScale
-from LocalitySelfAttention import LocalitySelfAttention
-from PatchEncoder import PatchEncoder
-from PositionalEmbeddings import PositionalEmbeddings
-from ShiftedPatchEncoder import ShiftedPatchEncoder
-from SoftClip import SoftClipLayer
 eprintWrap(f"TensorFlow GPUs = {len(tf.config.experimental.list_physical_devices('GPU'))}")
 eprintWrap(f"TensorFlow {tf.version.VERSION}\n")
 
@@ -253,7 +246,7 @@ testData = (
 
 
 ### READ MODEL
-model = tf.keras.models.load_model(settings['model'], compile = False, custom_objects = {'BiasLayer': BiasLayer, 'IterativeNormalization': IterativeNormalization, 'LayerScale': LayerScale, 'LocalitySelfAttention': LocalitySelfAttention, 'PatchEncoder': PatchEncoder, 'PositionalEmbeddings': PositionalEmbeddings, 'ShiftedPatchEncoder': ShiftedPatchEncoder, 'SoftClipLayer': SoftClipLayer})
+model = tf.keras.models.load_model(settings['model'], compile = False, custom_objects = {'IterativeNormalization': IterativeNormalization})
 model.compile(
 	loss = tf.keras.losses.CategoricalCrossentropy(
 		from_logits = True, 
