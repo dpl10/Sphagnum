@@ -1,11 +1,24 @@
-# Adventures in North American *Sphagnum* section *Sphagnum* computer vision
+# Adventures in North American *Sphagnum* subgenus *Sphagnum* computer vision
 
 ## DATASETS
 
-TensorFlow Record (.tfr) files containing images in PNG format images (species identification numbers are in alphabetical order):
+TensorFlow Record (.tfr) files containing images in PNG format and best models:
+* 10-species dataset [[476M]](https://drive.google.com/file/d/1sE3qGkcK9CH80hi0wlNvQ70PsgxGgdPg/view?usp=sharing)
+* 5-species dataset [[220M]](https://drive.google.com/file/d/1ECb0uo64iT0Bd7s_pdLuz4Azf3queDaF/view?usp=sharing)
+* 5-species verified [[197M]](https://drive.google.com/file/d/1faPBSYIuamF5E5lTrVtsvZc1ueFynC05/view?usp=sharing)
 
-* [5-species dataset](https://drive.google.com/file/d/1ffUw4jktsy8jA1X4LZJ1UYuKoxI1aU7n/view?usp=sharing) [315MB]
-* [12-species dataset](https://drive.google.com/file/d/1EAzCxz0eIN9m0NVy7D-kjztssycC0iQa/view?usp=sharing) [611MB]
+| *SPHAGNUM* SUBGENUS *SPHAGNUM*       | 10-SPECIES INDEX | 5-SPECIES INDEX |
+| ------------------------------------ | ---------------- | --------------- |
+| *S. affine* Renauld & Cardot         | 0                | 0               |
+| *S. alaskense* R.E.Andrus & Janssens | 1                | NULL            |
+| *S. austinii* Sull. in C.F.Austin    | 2                | NULL            |
+| *S. centrale* C.E.O.Jensen           | 3                | 1               |
+| *S. magellanicum* Brid.              | 4                | 2               |
+| *S. palustre* L.                     | 5                | 3               |
+| *S. papillosum* Lindb.               | 6                | 4               |
+| *S. perichaetiale* Hampe             | 7                | NULL            |
+| *S. portoricense* Hampe              | 8                | NULL            |
+| *S. steerei* R.E.Andrus              | 9                | NULL            |
 
 ## CODE
 
@@ -13,48 +26,55 @@ Code developed and tested using TensorFlow 2.13.0 [official Docker images](https
 
 <!--
 
-COUNTS="{0:4995,1:37,2:422,3:3248,4:108,5:762,6:8310,7:6057,8:12057,9:876,10:169,11:35}"
+COUNTS="{0:4995,1:37,2:422,3:3248,4:8310,5:6057,6:12057,7:876,8:169,9:35}"
 DIR=FireNetSEz
 GPU=0
 MODEL=x.keras
 SEED=42
-SPECIES=12
-TEST=Sphagnum-Sphagnum-vegetative64-test.tfr
-TRAIN=Sphagnum-Sphagnum-12ua-vegetative64-train.tfr
-VAL_ALL=Sphagnum-Sphagnum-12ua-vegetative64-validation.tfr
-VAL_ONE=Sphagnum-Sphagnum-vegetative64-validation.tfr
+SIZE=64
+SPECIES=10
+TEST=Sphagnum-Sphagnum-10b-vegetative-test.tfr
+TRAIN=Sphagnum-Sphagnum-10ua-vegetative64-train.tfr
+VALIDATION=Sphagnum-Sphagnum-10ua-vegetative64-validation.tfr
 
 -->
 
 * Create a FireNetSEz model: 
 ```bash
-./firenet.py -a $SPECIES -c -f selu -i 64 -o $MODEL -p 0 -r $SEED -s -x 48,32,32,48 -z conv ### 12-species = 100,320 parameters
+SIZE=64
+./firenet.py -a $SPECIES -c -f selu -i $SIZE -o $MODEL -p 0 -r $SEED -s -x 48,32,32,48 -Z 5 -z conv ### 10-species = 100,126 parameters; 5-species = 99,641 parameters
+
 ```
 * Pretrain the model:
 ```bash
-./trainImagesC.py -a $SPECIES -b 16 -C "[0.8,1.4,0.0]" -d 0.01 -e 4096 -f ccm+clr+aw -g $GPU -i 64 -l 0.001 -m $MODEL -o $DIR -Q -r $SEED -t $TRAIN -v $VAL_ALL
+GPU=0
+./trainImagesC.py -a $SPECIES -b 16 -C "[0.8,1.4,0.0]" -d 0.01 -e 4096 -f ccm+clr+aw -g $GPU -i $SIZE -l 0.001 -m $MODEL -o $DIR -Q -r $SEED -t $TRAIN -v $VALIDATION
 ```
 * Evaluate the pretraining: 
 ```bash
 LAST=$(ls -ltr $DIR/*/best-model.keras | awk -F"/" "{print \$2}" | tail -1)
-./testImages.py -a $SPECIES -b 96 -g $GPU -i 64 -j -m $DIR"/"$LAST"/best-model.keras" -t $VAL_ONE
+./testImagesPNG.py -a $SPECIES -b 96 -g $GPU -i $SIZE -m $DIR"/"$LAST"/best-model.keras" -t $VALIDATION
 ```
 * Make a greedy model soup:
 ```bash
 LAST=$(ls -ltr $DIR/*/best-model.keras | awk -F"/" "{print \$2}" | tail -1 | perl -pe "s/-best/-intermediate/")
-./imageSoup.py -a $SPECIES -b 96 -d $TRAIN -g $GPU -m $DIR"/"$LAST -o $DIR -T 60 -v $VAL_ALL
+./imageSoup.py -a $SPECIES -b 96 -d $TRAIN -g $GPU -m $DIR"/"$LAST -o $DIR -T 60 -v $VALIDATION
 ```
 * Evaluate the model soup: 
 ```bash
 LAST=$(ls -ltr $DIR/*/soup-model.keras | awk -F"/" "{print \$2}" | tail -1)
-./testImages.py -a $SPECIES -b 96 -g $GPU -i 64 -j -m $DIR"/"$LAST"/soup-model.keras" -t $VAL_ONE
+./testImagesPNG.py -a $SPECIES -b 96 -g $GPU -i $SIZE -m $DIR"/"$LAST"/soup-model.keras" -t $VALIDATION
 ```
 * Finetune the model soup: 
 ```bash
-./trainImagesC.py -a $SPECIES -b 16 -d 0.0001 -e 4096 -f ce+clr+aw -g $GPU -i 64 -k 0.4 -l 0.00001 -m $DIR"/"$LAST"/soup-model.keras" -o $DIR -q -r $SEED -s "output_gap" -t $TRAIN -u 0.4 -v $VAL_ALL -y "$COUNTS" 
+./trainImagesC.py -a $SPECIES -b 16 -d 0.0001 -e 4096 -f ce+clr+aw -g $GPU -i $SIZE -k 0.4 -l 0.00001 -m $DIR"/"$LAST"/soup-model.keras" -o $DIR -q -r $SEED -s "output_gap" -t $TRAIN -u 0.4 -v $VALIDATION -y "$COUNTS" 
 ```
 * Evaluate the finetuned model:
 ```bash
 LAST=$(ls -ltr $DIR/*/best-model.keras | awk -F"/" "{print \$2}" | tail -1)
-./testImages.py -a 12 -b 96 -g $GPU -i $SIZE -j -m $DIR"/"$LAST"/best-model.keras" -t $TEST
+./testImagesMeanPNG.py -a $SPECIES -g $GPU -i $SIZE -m $DIR"/"$LAST"/best-model.keras" -t $TEST
 ```
+
+## CITATION
+
+If you use the *Sphagnum* subgenus *Sphagnum* datasets, code, or models in your work, please [cite](https://doi.org/10.1111/nph.70461) us.
